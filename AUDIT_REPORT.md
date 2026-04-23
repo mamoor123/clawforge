@@ -1,178 +1,224 @@
-# ClawForge Shell Script Audit Report
+# ClawForge Multi-Agent Audit Report
 
 **Date:** 2026-04-23  
-**Audited files:** `clawforge.sh`, `skills/clawforge/scripts/plan.sh`  
-**Methods:** Manual review, ShellCheck v0.10.0, bash -x xtrace, fuzz testing (13 payloads), taint analysis, control flow audit, TOCTOU analysis, dependency analysis, jq logic testing, schema consistency audit, set -u/set -e interaction analysis
+**Audited by:** 4 parallel sub-agents + consolidated analysis  
+**Files:** `clawforge.sh`, `skills/clawforge/scripts/plan.sh`, `projects/url-shortener/*`, `skills/clawforge/SKILL.md`, `agents/*/IDENTITY.md`
 
 ---
 
-## Already Fixed (commit ef32fa3)
+## Agent 1: Security Audit
 
-The following bugs were found and have been resolved:
+### 🔴 S1 — Heredoc Command Expansion (clawforge.sh:28-40)
 
-- ✅ JSON injection in `init` heredoc — now uses sed escaping
-- ✅ jq availability — `require_jq()` function added to all commands
-- ✅ Temp file leak — `cleanup()` trap added
-- ✅ Directory validation — `mkdir -p` for state file directory
-- ✅ `build.sh` reference removed — now points to `clawforge.sh stage`
-- ✅ `plan.sh` atomic write — uses temp+mv pattern
-- ✅ Dead `ARCHITECT_IDENTITY` variable removed
-- ✅ Help text indentation fixed
-
----
-
-## Remaining Bugs
-
-### 🔴 HIGH — `plan.sh:22` — Trailing newline in every task value
-
-**Code:**
-```bash
-TASK_JSON=$(echo "$REQUEST" | jq -Rs .)
-```
-
-`echo` appends `\n`. `jq -Rs` preserves it. Every task stored in state ends with `\n`.
-
-**Proof:** `echo "Build API" | jq -Rs .` → `"Build API\n"`
-
-**Impact:** Breaks any downstream string comparison. Task display shows trailing blank line.
-
-**Fix:**
-```bash
-TASK_JSON=$(printf '%s' "$REQUEST" | jq -Rs .)
-```
-
----
-
-### 🔴 HIGH — `clawforge.sh:73-78` — Empty FIELD in `update` destroys entire state file
-
-**Code:**
-```bash
-FIELD="${2:-}"
-VALUE="${3:-}"
-jq --arg field "$FIELD" --arg value "$VALUE" \
-  'setpath($field | split(".") | map(select(. != "")); $value)' "$STATE_FILE"
-```
-
-When `$FIELD` is empty: `split(".")` → `[""]` → `map(select(. != ""))` → `[]` → `setpath([]; "test")` → **replaces entire JSON with the string value**.
-
-**Proof:** `clawforge.sh update '' 'boom'` → state file becomes just `"boom"`.
-
-**Fix:**
-```bash
-if [ -z "$FIELD" ]; then
-  echo "❌ Field path required (e.g. .plan.stack.language)" >&2
-  exit 1
-fi
-```
-
----
-
-### 🟡 MEDIUM — `clawforge.sh` — No state file existence check for 6 commands
-
-Only `status` checks `[ -f "$STATE_FILE" ]`. The commands `stage`, `update`, `plan`, `review-result`, `test-result`, and `deploy-result` pass the missing file directly to jq, producing:
-
-```
-jq: error: Could not open file /path/to/state.json: No such file or directory
-```
-
-**Fix:** Add to each command (or create a shared function):
-```bash
-if [ ! -f "$STATE_FILE" ]; then
-  echo "❌ No state file. Run: clawforge.sh init \"your task\"" >&2
-  exit 1
-fi
-```
-
----
-
-### 🟡 MEDIUM — Both scripts — Schema mismatch between `init` and `plan.sh`
-
-`clawforge.sh init` creates structured defaults:
-```json
-"plan": {}, "files": {"created":[],"modified":[]}, "review": {"passed":false,"issues":[]}, ...
-```
-
-`plan.sh` creates nulls:
-```json
-"plan": null, "files": null, "review": null, "tests": null, "deploy": null
-```
-
-Downstream `jq '.plan.stack'` works on `{}` but crashes on `null` with `null is not defined`.
-
-**Fix:** Use consistent defaults in `plan.sh` (copy the structure from `init`).
-
----
-
-### 🟡 MEDIUM — `clawforge.sh:20-23` — `init` still writes state non-atomically
+The `init` heredoc uses unquoted `<< EOF`. This means `$(...)` inside `$TASK` is **executed**.
 
 ```bash
-cat > "$STATE_FILE" << EOF
+clawforge.sh init '$(whoami)'
+# Result: "task": "$(whoami)" — the command runs, output embedded in JSON
 ```
 
-All other commands use `mktemp → jq > TMP → mv`. The `init` command does a direct `cat >` write. Interruption mid-write corrupts the file.
+The sed escaping on line 24 does NOT prevent command substitution — it only escapes `\`, `"`, and `\t`. A `$(rm -rf /)` payload would execute before the sed even runs.
 
-**Fix:**
+**Fix:** Use a quoted heredoc `<< "EOF"` and inject variables separately, or switch to jq for JSON generation:
 ```bash
-TMP=$(mktemp)
-cat > "$TMP" << EOF
-...
-EOF
-mv "$TMP" "$STATE_FILE"
+TASK_JSON=$(printf '%s' "$TASK" | jq -Rs .)
 ```
 
----
-
-### 🟡 MEDIUM — Both scripts — No file locking for multi-agent access
-
-ClawForge is a multi-agent state manager. Two agents calling `stage` or `update` simultaneously can race: both read the same state, both write, last writer's changes silently overwrite the first's.
-
-**Fix:** Add advisory locking:
-```bash
-exec 9>"$STATE_FILE.lock"
-flock -x 9
-# ... critical section ...
-flock -u 9
-```
-
----
-
-### 🟡 MEDIUM — `clawforge.sh:22` — sed escaping incomplete (no newline handling)
+### 🔴 S2 — JSON Injection via Newlines (clawforge.sh:24)
 
 ```bash
 ESCAPED_TASK=$(printf '%s' "$TASK" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g')
 ```
 
-Handles `\`, `"`, and `\t` — but does **not** handle literal newlines in `$TASK`. A task containing an actual newline produces broken JSON.
+Handles `\`, `"`, and `\t` — but **not literal newlines**. A task with embedded newlines produces broken JSON.
 
-**Fix:** Add newline escaping:
+**Fix:** Add `| tr '\n' ' '` or use `jq -Rs .` for proper encoding.
+
+### 🟡 S3 — Path Traversal via CLAWFORGE_STATE
+
+`CLAWFORGE_STATE` can point to any writable path. No validation that it's inside the workspace.
+
 ```bash
-ESCAPED_TASK=$(printf '%s' "$TASK" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g' | tr '\n' ' ')
+CLAWFORGE_STATE=/etc/crontab bash clawforge.sh init "evil"
 ```
 
-Or better yet, just use jq for encoding:
-```bash
-TASK_JSON=$(printf '%s' "$TASK" | jq -Rs .)
+**Fix:** Validate the path is within an allowed directory.
+
+### 🟡 S4 — No File Locking (0 flock calls)
+
+Two agents running simultaneously can race on read-modify-write of `clawforge-state.json`. Last writer wins silently.
+
+**Fix:** Add `flock` advisory locking.
+
+### 🟡 S5 — IP Addresses Stored in Plaintext (redirect.ts:36)
+
+```typescript
+const ip = req.ip || req.socket.remoteAddress || null;
 ```
+
+IPs stored in `clicks` table — GDPR/privacy concern for production use.
 
 ---
 
-### 🟢 LOW — `clawforge.sh` — SC2312: Command substitution masks return values
+## Agent 2: Correctness & Logic Audit
 
-ShellCheck `--enable=all` flags `$(date -u ...)` inside heredocs. If `date` fails, the error is masked.
+### 🔴 C1 — Empty FIELD in `update` Destroys State (clawforge.sh:73-78)
+
+```bash
+jq --arg field "" --arg value "boom" \
+  'setpath($field | split(".") | map(select(. != "")); $value)' state.json
+```
+
+When `$FIELD` is empty: `split(".")` → `[""]` → filtered to `[]` → `setpath([]; "boom")` → **entire state file becomes the string `"boom"`**.
+
+**Confirmed:** `clawforge.sh update '' 'boom'` → state file = `"boom"` (all data lost).
+
+**Fix:**
+```bash
+if [ -z "$FIELD" ]; then echo "❌ Field path required" >&2; exit 1; fi
+```
+
+### 🔴 C2 — Trailing Newline in plan.sh Task (plan.sh:22)
+
+```bash
+TASK_JSON=$(echo "$REQUEST" | jq -Rs .)
+```
+
+`echo` appends `\n`, `jq -Rs` preserves it. Every task ends with `\n`.
+
+**Confirmed:** task = `'Build API\n'` — breaks string comparisons.
+
+**Fix:** `printf '%s' "$REQUEST"` instead of `echo`.
+
+### 🟡 C3 — No State File Check for 5 Commands
+
+`stage`, `update`, `review-result`, `test-result`, `deploy-result` all pass a missing file to jq, producing raw `jq: error: Could not open file`.
+
+Only `status` checks `[ -f "$STATE_FILE" ]`.
+
+**Fix:** Add existence check to each command.
+
+### 🟡 C4 — Schema Mismatch: init vs plan.sh
+
+| Field | clawforge.sh init | plan.sh |
+|-------|-------------------|---------|
+| plan | `{}` | `null` |
+| files | `{"created":[],"modified":[]}` | `null` |
+| review | `{"passed":false,"issues":[]}` | `null` |
+| tests | `{"total":0,...}` | `null` |
+| deploy | `{"url":"",...}` | `null` |
+
+Downstream `jq '.plan.stack'` works on `{}` but **crashes on `null`**.
+
+**Fix:** Use consistent defaults in plan.sh.
+
+### 🟡 C5 — test-result Accepts Non-Numeric Values
+
+`clawforge.sh test-result abc 8 2` → jq `tonumber` fails with raw error. No input validation.
+
+### 🟢 C6 — init Still Writes Non-Atomically
+
+`cat > "$STATE_FILE" << EOF` — no temp+mv. Low risk since `mkdir -p` ensures directory exists.
 
 ---
 
-## Summary
+## Agent 3: TypeScript Project Audit
 
-| # | Severity | File | Issue |
-|---|----------|------|-------|
-| 1 | 🔴 High | plan.sh:22 | Trailing `\n` in every task (echo vs printf) |
-| 2 | 🔴 High | clawforge.sh:73 | Empty FIELD destroys entire state file |
-| 3 | 🟡 Med | clawforge.sh | No state file check for 6 commands |
-| 4 | 🟡 Med | both | Schema mismatch (dicts vs nulls) |
-| 5 | 🟡 Med | clawforge.sh:20 | `init` writes non-atomically |
-| 6 | 🟡 Med | both | No file locking for multi-agent races |
-| 7 | 🟡 Med | clawforge.sh:22 | sed escaping incomplete (no newlines) |
-| 8 | 🟢 Low | clawforge.sh | SC2312 masked return values |
+### 🟡 T1 — No Input Length Validation (shorten.ts)
 
-**8 remaining issues** (2 High, 5 Medium, 1 Low).
+No max length on `url` or `customCode` fields. A multi-GB POST body causes DoS.
+
+**Fix:** Add `if (url.length > 2048) return res.status(400).json({error: 'URL too long'})`.
+
+### 🟡 T2 — No Rate Limiting
+
+No `express-rate-limit` or equivalent. Anyone can spam `POST /api/shorten` to exhaust disk/DB.
+
+### 🟡 T3 — No Security Headers
+
+No `helmet`, no CSP, no HSTS, no X-Frame-Options. The app is vulnerable to clickjacking and other client-side attacks.
+
+**Fix:** `npm install helmet` and `app.use(helmet())`.
+
+### 🟡 T4 — IP Privacy Concern (redirect.ts:36)
+
+IPs stored in plaintext. Should be hashed or anonymized for GDPR compliance.
+
+### 🟢 T5 — Missing Test Coverage
+
+10 tests exist, but missing: `GET /api/urls`, `GET /api/health`, concurrent requests, edge cases (SQL injection attempts, malformed JSON, very long URLs).
+
+### ✅ T6 — SQL Injection: Protected
+
+All queries use parameterized statements (`?` placeholders). No string concatenation in SQL.
+
+### ✅ T7 — Error Messages: Safe
+
+Generic "Database error" returned. No stack traces leaked.
+
+### ✅ T8 — XSS: Safe
+
+404 page uses static HTML. No user input embedded in responses.
+
+---
+
+## Agent 4: Architecture & Cross-File Audit
+
+### ✅ A1 — SKILL.md: Accurate
+
+No references to `build.sh` (removed in ef32fa3). All script paths match actual files.
+
+### ✅ A2 — Agent Identity Files: All Present
+
+All 5 agents (architect, coder, reviewer, tester, deployer) have identity files.
+
+### ✅ A3 — Error Messages: Consistent
+
+Both scripts use `❌` prefix and `>&2` for errors. Consistent style.
+
+### ✅ A4 — State Schema: Matches Expected Keys
+
+`clawforge-state.json` top-level keys match what the code expects.
+
+### 🟢 A5 — Plan.sh Error Message Inconsistency
+
+`clawforge.sh` says: `"❌ jq is required but not installed. Install it with: apt-get install jq"`  
+`plan.sh` says: `"❌ jq is required but not installed."`
+
+Minor inconsistency — different messages for the same condition.
+
+---
+
+## Consolidated Summary
+
+| # | ID | Severity | File | Issue |
+|---|-----|----------|------|-------|
+| 1 | S1 | 🔴 High | clawforge.sh:28 | Heredoc executes `$(...)` in user input |
+| 2 | S2 | 🔴 High | clawforge.sh:24 | sed escaping doesn't handle newlines |
+| 3 | C1 | 🔴 High | clawforge.sh:73 | Empty FIELD destroys entire state file |
+| 4 | C2 | 🔴 High | plan.sh:22 | Trailing `\n` in every task (echo vs printf) |
+| 5 | S3 | 🟡 Med | clawforge.sh:6 | Path traversal via CLAWFORGE_STATE |
+| 6 | S4 | 🟡 Med | clawforge.sh | No file locking for multi-agent races |
+| 7 | C3 | 🟡 Med | clawforge.sh | No state file check for 5 commands |
+| 8 | C4 | 🟡 Med | both | Schema mismatch (dicts vs nulls) |
+| 9 | C5 | 🟡 Med | clawforge.sh:112 | test-result accepts non-numeric values |
+| 10 | T1 | 🟡 Med | shorten.ts | No input length validation (DoS risk) |
+| 11 | T2 | 🟡 Med | shorten.ts | No rate limiting |
+| 12 | T3 | 🟡 Med | index.ts | No security headers (helmet) |
+| 13 | T4 | 🟡 Med | redirect.ts:36 | IP addresses stored in plaintext |
+| 14 | S5 | 🟡 Med | redirect.ts:36 | IP privacy (GDPR concern) |
+| 15 | C6 | 🟢 Low | clawforge.sh:28 | init writes non-atomically |
+| 16 | T5 | 🟢 Low | api.test.ts | Missing test coverage for several endpoints |
+| 17 | A5 | 🟢 Low | plan.sh vs clawforge.sh | Inconsistent jq error messages |
+
+**Total: 17 issues** — 4 High, 10 Medium, 3 Low
+
+### Priority Fix Order
+
+1. **S1** — Heredoc command injection (security critical)
+2. **C1** — Empty FIELD destroys state (data loss)
+3. **C2** — Trailing newline in plan.sh (data corruption)
+4. **S2** — Newline escaping gap (data corruption)
+5. **T1-T3** — DoS and security headers (production readiness)
+6. **C3-C4** — State file checks and schema consistency (reliability)
+7. **S3-S4** — Path traversal and locking (hardening)
