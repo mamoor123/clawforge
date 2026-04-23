@@ -189,6 +189,57 @@ Minor inconsistency — different messages for the same condition.
 
 ---
 
+## Agent 5: Manual Line-by-Line + Git Hygiene Audit
+
+### 🔴 M1 — Runtime State File Committed to Git
+
+`clawforge-state.json` is tracked in git (`git ls-files` confirms). This is a runtime artifact that changes on every agent run. It should be gitignored.
+
+```
+$ git ls-files clawforge-state.json
+clawforge-state.json
+```
+
+**Fix:** Add `clawforge-state.json` to `.gitignore` and `git rm --cached clawforge-state.json`.
+
+### 🔴 M2 — SQLite Database Files Committed to Git
+
+```
+projects/data/shortener.db
+projects/data/shortener.db-shm
+projects/data/shortener.db-wal
+```
+
+Binary database files are tracked. The url-shortener's `.gitignore` excludes `*.db` and `data/`, but the data directory is at `projects/data/` (outside the url-shortener root), so the gitignore doesn't catch it.
+
+**Fix:** Add a root `.gitignore` with `*.db`, `*.db-shm`, `*.db-wal`, `projects/data/`.
+
+### 🟡 M3 — No Root `.gitignore`
+
+There is no `.gitignore` at the repository root. The url-shortener has its own, but nothing protects the root from accidentally committing state files, databases, or other artifacts.
+
+**Fix:** Create root `.gitignore`:
+```
+clawforge-state.json
+*.db
+*.db-shm
+*.db-wal
+node_modules/
+.env
+```
+
+### 🟡 M4 — Reviewer Approved Code That Violates Its Own Checklist
+
+The reviewer's identity file (`agents/reviewer/IDENTITY.md`) has a checklist including:
+- "Rate limiting on public endpoints" — **not implemented**
+- "No hardcoded secrets, API keys, or tokens" — state file with URLs committed to git
+
+Yet `clawforge-state.json` shows `"review": {"passed": true}`. The reviewer agent approved code that fails its own checklist.
+
+**Fix:** Either implement the missing items, or update the checklist to match what's actually enforced.
+
+---
+
 ## Consolidated Summary
 
 | # | ID | Severity | File | Issue |
@@ -210,15 +261,21 @@ Minor inconsistency — different messages for the same condition.
 | 15 | C6 | 🟢 Low | clawforge.sh:28 | init writes non-atomically |
 | 16 | T5 | 🟢 Low | api.test.ts | Missing test coverage for several endpoints |
 | 17 | A5 | 🟢 Low | plan.sh vs clawforge.sh | Inconsistent jq error messages |
+| 18 | M1 | 🔴 High | clawforge-state.json | Runtime state file committed to git |
+| 19 | M2 | 🔴 High | projects/data/*.db | SQLite database files committed to git |
+| 20 | M3 | 🟡 Med | repo root | No root .gitignore |
+| 21 | M4 | 🟡 Med | agents/reviewer | Reviewer approved code violating its own checklist |
 
-**Total: 17 issues** — 4 High, 10 Medium, 3 Low
+**Total: 21 issues** — 6 High, 11 Medium, 4 Low
 
 ### Priority Fix Order
 
 1. **S1** — Heredoc command injection (security critical)
 2. **C1** — Empty FIELD destroys state (data loss)
-3. **C2** — Trailing newline in plan.sh (data corruption)
-4. **S2** — Newline escaping gap (data corruption)
-5. **T1-T3** — DoS and security headers (production readiness)
-6. **C3-C4** — State file checks and schema consistency (reliability)
-7. **S3-S4** — Path traversal and locking (hardening)
+3. **M1/M2** — Runtime files committed to git (repo hygiene)
+4. **C2** — Trailing newline in plan.sh (data corruption)
+5. **S2** — Newline escaping gap (data corruption)
+6. **T1-T3** — DoS and security headers (production readiness)
+7. **C3-C4** — State file checks and schema consistency (reliability)
+8. **S3-S4** — Path traversal and locking (hardening)
+9. **M3/M4** — Root gitignore + reviewer checklist alignment
