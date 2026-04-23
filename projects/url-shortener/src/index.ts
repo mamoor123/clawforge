@@ -23,12 +23,14 @@ app.locals.db = db;
 // Routes
 app.use('/api', shortenRouter);
 app.use('/api/analytics', analyticsRouter);
-app.use('/', redirectRouter);
 
-// Health check
+// Health check (before catch-all redirect router)
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', uptime: process.uptime() });
 });
+
+// Redirect router (catch-all — must be last)
+app.use('/', redirectRouter);
 
 app.listen(PORT, () => {
   console.log(`🔗 ClawForge URL Shortener running on http://localhost:${PORT}`);

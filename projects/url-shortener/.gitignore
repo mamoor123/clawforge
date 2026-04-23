@@ -6,7 +6,3 @@ data/
 *.db-shm
 .env
 .DS_Store
-projects/data/
-*.db
-*.db-shm
-*.db-wal

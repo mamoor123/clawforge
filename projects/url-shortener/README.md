@@ -27,6 +27,7 @@ All from a single Telegram message: *"Build me a URL shortener with click analyt
 | Method | Path | Description |
 |--------|------|-------------|
 | `POST` | `/api/shorten` | Create a short URL |
+| `GET` | `/api/urls` | List all shortened URLs |
 | `GET` | `/:code` | Redirect to original URL |
 | `GET` | `/api/analytics/:code` | Get click stats |
 | `GET` | `/api/health` | Health check |

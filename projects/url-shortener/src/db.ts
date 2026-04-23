@@ -3,7 +3,7 @@ import path from 'path';
 import fs from 'fs';
 
 export function initDb(dbPath?: string): Database.Database {
-  const dir = path.join(__dirname, '../../data');
+  const dir = path.join(__dirname, '../data');
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   const p = dbPath || path.join(dir, 'shortener.db');
   const db = new Database(p);

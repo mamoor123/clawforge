@@ -7,6 +7,12 @@ export const shortenRouter = Router();
 // POST /api/shorten — Create a short URL
 shortenRouter.post('/shorten', (req: Request, res: Response) => {
   const db: Database.Database = req.app.locals.db;
+
+  // Validate request body
+  if (!req.body || typeof req.body !== 'object') {
+    return res.status(400).json({ error: 'Request body required (Content-Type: application/json)' });
+  }
+
   const { url, customCode } = req.body;
 
   // Validate URL
@@ -18,6 +24,16 @@ shortenRouter.post('/shorten', (req: Request, res: Response) => {
     new URL(url);
   } catch {
     return res.status(400).json({ error: 'Invalid URL format' });
+  }
+
+  // Validate customCode type and format
+  if (customCode !== undefined) {
+    if (typeof customCode !== 'string') {
+      return res.status(400).json({ error: 'customCode must be a string' });
+    }
+    if (!/^[a-zA-Z0-9_-]+$/.test(customCode)) {
+      return res.status(400).json({ error: 'customCode must contain only letters, numbers, hyphens, and underscores' });
+    }
   }
 
   // Generate or use custom short code

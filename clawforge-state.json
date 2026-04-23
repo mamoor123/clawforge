@@ -26,13 +26,33 @@
     ],
     "endpoints": [
       { "method": "POST", "path": "/api/shorten", "description": "Create short URL" },
+      { "method": "GET", "path": "/api/urls", "description": "List all shortened URLs" },
       { "method": "GET", "path": "/:code", "description": "Redirect to original" },
       { "method": "GET", "path": "/api/analytics/:code", "description": "Get click stats" },
       { "method": "GET", "path": "/api/health", "description": "Health check" }
     ],
     "models": [
-      { "name": "urls", "fields": { "id": "INTEGER PRIMARY KEY", "original_url": "TEXT NOT NULL", "short_code": "TEXT UNIQUE", "clicks": "INTEGER DEFAULT 0" } },
-      { "name": "clicks", "fields": { "id": "INTEGER PRIMARY KEY", "url_id": "INTEGER FK", "referrer": "TEXT", "user_agent": "TEXT" } }
+      {
+        "name": "urls",
+        "fields": {
+          "id": "INTEGER PRIMARY KEY AUTOINCREMENT",
+          "original_url": "TEXT NOT NULL",
+          "short_code": "TEXT UNIQUE NOT NULL",
+          "created_at": "DATETIME DEFAULT CURRENT_TIMESTAMP",
+          "clicks": "INTEGER DEFAULT 0"
+        }
+      },
+      {
+        "name": "clicks",
+        "fields": {
+          "id": "INTEGER PRIMARY KEY AUTOINCREMENT",
+          "url_id": "INTEGER NOT NULL REFERENCES urls(id)",
+          "clicked_at": "DATETIME DEFAULT CURRENT_TIMESTAMP",
+          "referrer": "TEXT",
+          "user_agent": "TEXT",
+          "ip_address": "TEXT"
+        }
+      }
     ],
     "dependencies": ["express", "better-sqlite3", "nanoid", "cors"]
   },
@@ -71,10 +91,10 @@
     ]
   },
   "deploy": {
-    "repo": "https://github.com/demo/clawforge-url-shortener",
-    "pr": "https://github.com/demo/clawforge-url-shortener/pull/1",
-    "url": "https://clawforge-url-shortener.vercel.app",
-    "platform": "vercel",
+    "repo": "https://github.com/mamoor123/clawforge",
+    "pr": "https://github.com/mamoor123/clawforge/pull/1",
+    "url": "https://e97a84bc1795856b-8-219-194-199.serveousercontent.com",
+    "platform": "serveo",
     "commit": "a1b2c3d",
     "verified": true
   }

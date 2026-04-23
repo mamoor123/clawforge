@@ -30,17 +30,18 @@ redirectRouter.get('/:code', (req: Request, res: Response) => {
     `);
   }
 
-  // Track the click
+  // Track the click (wrapped in transaction for data consistency)
   const referrer = req.get('referer') || null;
   const userAgent = req.get('user-agent') || null;
   const ip = req.ip || req.socket.remoteAddress || null;
 
-  db.prepare(
-    'INSERT INTO clicks (url_id, referrer, user_agent, ip_address) VALUES (?, ?, ?, ?)'
-  ).run(url.id, referrer, userAgent, ip);
-
-  // Increment click counter
-  db.prepare('UPDATE urls SET clicks = clicks + 1 WHERE id = ?').run(url.id);
+  const trackClick = db.transaction(() => {
+    db.prepare(
+      'INSERT INTO clicks (url_id, referrer, user_agent, ip_address) VALUES (?, ?, ?, ?)'
+    ).run(url.id, referrer, userAgent, ip);
+    db.prepare('UPDATE urls SET clicks = clicks + 1 WHERE id = ?').run(url.id);
+  });
+  trackClick();
 
   // Redirect
   res.redirect(302, url.original_url);
