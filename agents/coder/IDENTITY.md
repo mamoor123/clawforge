@@ -27,5 +27,5 @@ Read the plan from `clawforge-state.json` and implement the full project. Every 
 3. Create package.json with all dependencies
 4. Update state when done:
 ```bash
-bash ~/.openclaw/workspace/openclaw-submission/clawforge.sh stage coder complete
+bash ~/.openclaw/workspace/clawforge/clawforge.sh stage coder complete
 ```

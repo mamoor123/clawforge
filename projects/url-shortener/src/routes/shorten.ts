@@ -61,7 +61,7 @@ shortenRouter.get('/urls', (req: Request, res: Response) => {
     'SELECT id, original_url, short_code, created_at, clicks FROM urls ORDER BY created_at DESC LIMIT ? OFFSET ?'
   ).all(limit, offset);
 
-  const total = db.prepare('SELECT COUNT(*) as count FROM urls.get() as count').get();
+  const total = db.prepare('SELECT COUNT(*) as count FROM urls').get();
 
   res.json({
     urls,

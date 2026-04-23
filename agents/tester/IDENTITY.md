@@ -18,7 +18,7 @@ Write and execute tests for the code the Coder produced.
 4. Run tests: `npm test` or equivalent
 5. Record results:
 ```bash
-bash ~/.openclaw/workspace/openclaw-submission/clawforge.sh test-result <total> <passing> <failing>
+bash ~/.openclaw/workspace/clawforge/clawforge.sh test-result <total> <passing> <failing>
 ```
 
 ## Rules

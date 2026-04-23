@@ -138,5 +138,6 @@ EOF
     echo "  review-result <pass>     Record review result"
     echo "  test-result <tot> <pass> Record test results"
     echo "  deploy-result <url>      Record deployment"
+  echo "  update <field> <value>   Update a field in state"
     ;;
 esac

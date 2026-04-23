@@ -5,7 +5,7 @@ set -euo pipefail
 
 REQUEST="${1:-}"
 STATE_FILE="${CLAWFORGE_STATE:-$HOME/.openclaw/workspace/clawforge-state.json}"
-ARCHITECT_IDENTITY="$HOME/.openclaw/workspace/openclaw-submission/agents/architect/IDENTITY.md"
+ARCHITECT_IDENTITY="$HOME/.openclaw/workspace/clawforge/agents/architect/IDENTITY.md"
 
 if [ -z "$REQUEST" ]; then
   echo "Usage: plan.sh \"user request\""

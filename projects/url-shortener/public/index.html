@@ -89,7 +89,14 @@
     }
 
     // Load stats on page load
-    fetch(`${API}/api/health`).then(r => r.json()).then(() => {
+    fetch(`${API}/api/urls`).then(r => r.json()).then(data => {
+      document.getElementById('stat-urls').textContent = data.total || 0;
+      // Sum up clicks from all URLs
+      const totalClicks = (data.urls || []).reduce((sum, u) => sum + (u.clicks || 0), 0);
+      document.getElementById('stat-clicks').textContent = totalClicks;
+      document.getElementById('stats-panel').style.display = 'block';
+    }).catch(() => {
+      // Fallback: just show the panel
       document.getElementById('stats-panel').style.display = 'block';
     });
   </script>

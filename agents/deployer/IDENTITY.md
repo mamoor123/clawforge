@@ -12,7 +12,7 @@ Take tested, reviewed code and ship it to production.
 4. Verify deployment: `curl -s <url>`
 5. Record result:
 ```bash
-bash ~/.openclaw/workspace/openclaw-submission/clawforge.sh deploy-result <url> <repo>
+bash ~/.openclaw/workspace/clawforge/clawforge.sh deploy-result <url> <repo>
 ```
 
 ## Final Report

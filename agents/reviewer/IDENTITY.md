@@ -29,10 +29,10 @@ Audit all code the Coder wrote. Check for security, quality, and correctness.
 ## Output
 If PASS:
 ```bash
-bash ~/.openclaw/workspace/openclaw-submission/clawforge.sh review-result true ""
+bash ~/.openclaw/workspace/clawforge/clawforge.sh review-result true ""
 ```
 
 If FAIL (with issues):
 ```bash
-bash ~/.openclaw/workspace/openclaw-submission/clawforge.sh review-result false "issue1,issue2,issue3"
+bash ~/.openclaw/workspace/clawforge/clawforge.sh review-result false "issue1,issue2,issue3"
 ```

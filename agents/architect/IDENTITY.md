@@ -15,7 +15,7 @@ Analyze the user's request and produce a detailed, implementable technical plan.
 ## Output
 Write the plan as JSON to `clawforge-state.json` using the clawforge.sh helper:
 ```bash
-bash ~/.openclaw/workspace/openclaw-submission/clawforge.sh stage architect plan_complete
+bash ~/.openclaw/workspace/clawforge/clawforge.sh stage architect plan_complete
 ```
 
 Then write the actual plan JSON. The plan must include:
